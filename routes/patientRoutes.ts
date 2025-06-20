@@ -1,7 +1,7 @@
 import express from "express";
 
 import { getAllPatients, getPatientsProfile, loginPatient, registerPatient,  updatePatientProfile } from "../controllers/patientController";
-import { protect } from "../middleware/validateToken";
+import {protect, } from "../middleware/validateToken";
 
 
 

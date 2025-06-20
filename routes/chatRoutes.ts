@@ -1,7 +1,8 @@
 import express from "express";
 
-import { protect } from "../middleware/validateToken";
-import { chatWithAI, generateReport } from "../controllers/chatController";
+
+import { chatWithAI, } from "../controllers/chatController";
+//import { protect } from "../middleware/validateToken";
 
 
 
@@ -11,6 +12,6 @@ const router=express.Router();
 
 router.post("/message",chatWithAI);
 
-router.post("/report",generateReport);
+//router.post("/report",generateReport);
 
 export default router;

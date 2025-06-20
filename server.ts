@@ -6,11 +6,14 @@ import morgan from "morgan";
 import patientRoutes from './routes/patientRoutes';
 //import doctorRoutes from './routes/doctorRoutes';
 import chatRoutes from "./routes/chatRoutes";
-
+import { connectDb } from "./config/mongoDbConnection";
 
 dotenv.config();
 
 const app=express();
+
+//connection of mongoDb
+connectDb();
 
 //security middlewares
 

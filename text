@@ -1,13 +1,23 @@
-How to Get the PostgreSQL Database URL
-The database URL follows this format:
+# How to Get the PostgreSQL Database URL
+# The database URL follows this format:
 
-postgresql://<username>:<password>@<host>:<port>/<database_name>
-
-
-update model 
-npx prisma migrate dev --name add_invite_code_to_doctor
+# postgresql://<username>:<password>@<host>:<port>/<database_name>
 
 
-Check if the inviteCode field is now visible in the Doctor table.
+# update model 
+# # npx prisma migrate dev --name add_invite_code_to_doctor
 
-npx prisma studio
+
+# Check if the inviteCode field is now visible in the Doctor table.
+
+# npx prisma studio
+
+# for test
+{
+  "name": "res",
+  "email": "res@gmail.com",
+  "password": "res@123",
+  "allergies": "Penicillin",
+  "diseases": "Diabetes Type 2",
+  "medications":"Metformin"
+}

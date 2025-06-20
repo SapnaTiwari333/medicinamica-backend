@@ -1,96 +1,95 @@
-
 import { Request, Response } from "express";
 import expressAsyncHandler from "express-async-handler";
 import { huggingClient } from "../config/huggingClient";
 import { keywordClassification } from "../utils.ts/keywordsClassification";
 import { getPromptForCategory } from "../utils.ts/getPromptForCategory";
+import { ChatSession } from "../model/chatSession";
+import { promptMap } from "../utils.ts/promptMap";
 
 
 // @desc     Handle a single AI chatbot message exchange
 // @route    POST /api/chat/message
 // @access   Public
 export const chatWithAI = expressAsyncHandler(async (req: Request, res: Response) => {
-  const { message } = req.body;
+  const { email,message } = req.body;
 
+  //get userid from jwt token
+  
 
-  // Validate the input
+  //  Validate that message is a non-empty string
   if (!message || typeof message !== "string") {
-    res.status(400).json({ error: "Message is required." });
+     res.status(400).json({ error: "Message is required." });
   }
 
-  //Detect category from keywords
-  let classification=keywordClassification(message);
+  // Validate that userId is provided and is a string
+  if (!email || typeof email !== "string") {
+     res.status(400).json({ error: "User ID is required." });
+  }
 
-  //Get system prompt based on classification
-  const systemPrompt=getPromptForCategory(classification);
+  //Try to find an existing chat session for the given user
+  let session = await ChatSession.findOne({ email });
 
-  //construct a prompt to make the AI response as a helful assistant 
-  const prompt=`You are a helpful, non-diagnostic medical assistant. 
-     Your goal is to suggest possible over-the-counter treatments, lifestyle recommendations, or symptoms management advice based on the user's message. 
-      DO NOT provide a medical diagnosis or prescription-only drugs.`;
+  // Declare variables to track classification and system prompt
+  let classification: string | null;
+  let systemPrompt: string | undefined;
 
-   // Send the message to Hugging Face chatCompletion endpoint
-  const result = await huggingClient.chatCompletion({
-    model: "meta-llama/Llama-3.1-8B-Instruct",
-    messages: [
-      {
-         role: "system", 
-        
-        content: `${systemPrompt}\n\n${prompt}`,
-      },
+  if (!session) {
+    // No existing session — start a new conversation
 
-      {role:"user",content:message}
-    ],
-    max_tokens: 512,
-  });
+    // Automatically classify the user message based on keyword detection
+    classification = keywordClassification(message);
 
+    // Get a condition-specific system prompt (e.g., if it's diabetes, asthma, etc.)
+    const conditionPrompt = getPromptForCategory(classification);
 
-  // Extract the assistant’s reply
-  const reply = result.choices?.[0]?.message?.content || "No reply generated.";
-  
-  // Send reply back to the client
-  res.status(200).json({ 
-    classification,
-    systemPromptUsed:systemPrompt,
-     response:reply ,
-  });
+    //Combine with a clarification prompt to initiate conversation properly
+    systemPrompt = `${conditionPrompt}\n\n${promptMap.clarificationPrompt}`;
 
-});
-
-
-// @desc     Generate a structured report from a conversation string
-// @route    POST /api/chat/report
-// @access   Public
-export const generateReport= expressAsyncHandler(async(req:Request,res:Response)=>{
-    const{conversation}=req.body;
-
-
-    // Validate that the conversation is a non-empty string
-    if(!conversation || typeof conversation!=="string"){
-        res.status(400).json({error:"Conveartion is requires"});
-    }
-
-
-    // Format the prompt for generating a medical report
-    const prompt=`Summarize the following patient-doctor conversation as a structure medical report in editable form:\n\n${conversation}\n\nReport:`;
-
-
-
-    // Call Hugging Face textGeneration API with a summarization model
-    const result=await huggingClient.textGeneration({
-        model:"tiiuae/falcon-7b-instruct",
-        inputs:prompt,
-        parameters:{
-            max_new_tokens:512,
-            return_full_text:false,
-        },
+    //Create a new chat session document
+    session = new ChatSession({
+      email,
+      classification,
+      step: "clarify", // initial step is always "clarify"
+      message: [
+        { role: "system", content: systemPrompt }, // system instructs the assistant
+        { role: "user", content: message },        // first user message
+      ],
+      updatedAt: new Date(), // initialize update timestamp
     });
+  } else {
+    //Existing session — continue the conversation
+    classification = session.classification;
+    session.message.push({ role: "user", content: message }); // Add new user message
+  }
 
+  //Convert the session messages into the format expected by Hugging Face API
+  const hfMessages = session.message.map((msg) => ({
+    role: msg.role,
+    content: msg.content,
+  }));
 
-    // Extract the generated report or provide fallback
-    const report=result.generated_text || "No report generated.";
-    
-    // Respond with the structured report
-    res.status(200).json({report});
+  // Send the message history to Hugging Face for response generation
+  const result = await huggingClient.chatCompletion({
+    model: "meta-llama/Llama-3.1-8B-Instruct", // selected LLM model
+    messages: hfMessages,                      // entire conversation history
+    max_tokens: 512,                           // limit on output length
+  });
+
+  //Extract the assistant’s reply from the result, fallback if missing
+  const reply = result.choices?.[0]?.message?.content || "No reply generated.";
+
+  //Add the assistant’s reply to the session message history
+  session.message.push({ role: "assistant", content: reply });
+
+  //Update timestamp to refresh TTL expiration
+  session.updatedAt = new Date();
+
+  // Save the updated or new session to the database
+  await session.save();
+
+  //Send final response back to the client
+  res.status(200).json({
+    classification, // e.g., "diabetes", "headache", etc.
+    response: reply, // assistant’s reply
+  });
 });
-
